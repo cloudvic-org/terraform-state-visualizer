@@ -1,0 +1,140 @@
+{
+  "format_version": "1.0",
+  "terraform_version": "1.13.3",
+  "values": {
+    "outputs": {
+      "database_endpoint": {
+        "sensitive": true,
+        "type": "string",
+        "value": "prod-db.cluster-xyz.us-west-2.rds.amazonaws.com"
+      },
+      "api_gateway_url": {
+        "sensitive": false,
+        "type": "string",
+        "value": "https://abc123.execute-api.us-west-2.amazonaws.com/prod"
+      }
+    },
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_lambda_function.api",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "api",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "filename": "lambda.zip",
+            "function_name": "api-handler",
+            "role": "arn:aws:iam::123456789012:role/lambda-execution-role",
+            "handler": "index.handler",
+            "runtime": "nodejs18.x",
+            "timeout": 30,
+            "memory_size": 128,
+            "environment": [
+              {
+                "variables": {
+                  "DB_HOST": "prod-db.cluster-xyz.us-west-2.rds.amazonaws.com",
+                  "NODE_ENV": "production"
+                }
+              }
+            ],
+            "tags": {
+              "Name": "api-handler",
+              "Environment": "production"
+            }
+          },
+          "sensitive_values": {
+            "environment": true
+          }
+        },
+        {
+          "address": "aws_api_gateway_rest_api.main",
+          "mode": "managed",
+          "type": "aws_api_gateway_rest_api",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "name": "main-api",
+            "description": "Main API Gateway",
+            "endpoint_configuration": [
+              {
+                "types": ["REGIONAL"]
+              }
+            ],
+            "tags": {
+              "Name": "main-api",
+              "Environment": "production"
+            }
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_api_gateway_resource.users",
+          "mode": "managed",
+          "type": "aws_api_gateway_resource",
+          "name": "users",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "rest_api_id": "abc123",
+            "parent_id": "root",
+            "path_part": "users"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_api_gateway_method.get_users",
+          "mode": "managed",
+          "type": "aws_api_gateway_method",
+          "name": "get_users",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "rest_api_id": "abc123",
+            "resource_id": "def456",
+            "http_method": "GET",
+            "authorization": "NONE"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_api_gateway_integration.lambda",
+          "mode": "managed",
+          "type": "aws_api_gateway_integration",
+          "name": "lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "rest_api_id": "abc123",
+            "resource_id": "def456",
+            "http_method": "GET",
+            "integration_http_method": "POST",
+            "type": "AWS_PROXY",
+            "uri": "arn:aws:apigateway:us-west-2:lambda:path/2015-03-31/functions/arn:aws:lambda:us-west-2:123456789012:function:api-handler/invocations"
+          },
+          "sensitive_values": {}
+        },
+        {
+          "address": "aws_api_gateway_deployment.main",
+          "mode": "managed",
+          "type": "aws_api_gateway_deployment",
+          "name": "main",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "values": {
+            "rest_api_id": "abc123",
+            "stage_name": "prod",
+            "depends_on": [
+              "aws_api_gateway_method.get_users",
+              "aws_api_gateway_integration.lambda"
+            ]
+          },
+          "sensitive_values": {}
+        }
+      ],
+      "child_modules": []
+    }
+  }
+}

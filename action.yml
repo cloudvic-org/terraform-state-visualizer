@@ -1,0 +1,26 @@
+name: 'CloudVIC Terraform State Visualizer'
+description: 'Generate interactive HTML visualizations from Terraform state JSON files'
+author: 'CloudVIC'
+homepage: 'https://cloudvic.com'
+url: 'https://github.com/cloudvic-org/terraform-state-visualizer'
+inputs:
+  state-file:
+    description: 'Path to the Terraform state JSON file'
+    required: true
+  output-file:
+    description: 'Path for the output HTML file'
+    required: false
+    default: 'terraform-state-visualization.html'
+  upload-artifact:
+    description: 'Upload the generated HTML as a GitHub artifact'
+    required: false
+    default: 'false'
+outputs:
+  html-file:
+    description: 'Path to the generated HTML file'
+runs:
+  using: 'docker'
+  image: 'ghcr.io/cloudvic-org/terraform-state-visualizer:latest'
+branding:
+  icon: 'layers'
+  color: 'blue'

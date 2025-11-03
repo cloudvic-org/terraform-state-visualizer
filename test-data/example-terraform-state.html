@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terraform State</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .source-link {
+            font-size: 14px;
+            font-weight: normal;
+            color: #3498db;
+            text-decoration: none;
+        }
+        .source-link:hover {
+            text-decoration: underline;
+        }
+        .promo-message {
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+        }
+        .promo-link {
+            color: #3498db;
+            text-decoration: none;
+            font-weight: bold;
+            font-style: normal;
+        }
+        .promo-link:hover {
+            text-decoration: underline;
+        }
+        .section-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+        .section-description {
+            font-size: 14px;
+            font-style: italic;
+            color: #6c757d;
+            margin-bottom: 15px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-radius: 5px;
+        }
+        .resource-item {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: white;
+            border-radius: 3px;
+            border-left: 4px solid #3498db;
+        }
+        .managed { border-left-color: #27ae60; }
+        .data { border-left-color: #f39c12; }
+        .resource-address {
+            font-family: monospace;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .resource-type {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        .resource-attributes {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .collapsible {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .collapsible:hover {
+            background-color: #f0f0f0;
+        }
+        .collapsible::before {
+            content: "▼";
+            font-size: 12px;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+        .collapsible.collapsed::before {
+            content: "▶";
+        }
+        .collapsible-content {
+            overflow: hidden;
+            transition: opacity 0.3s ease-out, max-height 0.3s ease-out;
+        }
+        .collapsible-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+        }
+        .collapsible-content:not(.collapsed) {
+            max-height: none;
+            opacity: 1;
+        }
+        .attribute-item {
+            margin: 5px 0;
+            padding: 3px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .attribute-key {
+            font-weight: bold;
+            color: #495057;
+        }
+        .attribute-value {
+            color: #6c757d;
+            margin-left: 10px;
+        }
+        .attribute-sensitive {
+            background-color: #fff3cd;
+            border-left: 3px solid #ffc107;
+            padding-left: 8px;
+        }
+        .summary {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .summary-item {
+            flex: 1;
+            text-align: center;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+        }
+        .summary-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .summary-label {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        .module-item {
+            margin: 10px 0;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            border-left: 4px solid #9b59b6;
+        }
+        .module-address {
+            font-family: monospace;
+            font-weight: bold;
+            color: #8e44ad;
+            font-size: 16px;
+        }
+        .module-resource-count {
+            color: #7f8c8d;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+    </style>
+    <script>
+        function toggleCollapsible(element) {
+            const content = element.nextElementSibling;
+            element.classList.toggle('collapsed');
+            content.classList.toggle('collapsed');
+        }
+        
+        // Make individual resource items collapsed by default, but keep main sections open
+        document.addEventListener('DOMContentLoaded', function() {
+            const collapsibles = document.querySelectorAll('.collapsible');
+            collapsibles.forEach(function(element) {
+                // Check if this is a main section (State Overview, Resources, etc.)
+                const isMainSection = element.querySelector('h2') !== null;
+                
+                if (!isMainSection) {
+                    // Only collapse individual resource items, not main sections
+                    element.classList.add('collapsed');
+                    const content = element.nextElementSibling;
+                    if (content) {
+                        content.classList.add('collapsed');
+                    }
+                } else {
+                    // Check if main section has no items
+                    const section = element.closest('.section');
+                    const resourceItems = section.querySelectorAll('.resource-item, .module-item');
+                    if (resourceItems.length === 0) {
+                        element.classList.add('collapsed');
+                        const content = element.nextElementSibling;
+                        if (content) {
+                            content.classList.add('collapsed');
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Terraform State</h1>
+                
+        <div class="section">
+            <div class="collapsible" onclick="toggleCollapsible(this)">
+                <div class="section-header-row">
+                    <h2>State Overview</h2>
+                    <p class="section-description">Summary of your Terraform state</p>
+                </div>
+            </div>
+            <div class="collapsible-content">
+                <div class="summary">
+		<div class="summary-item">
+			<div class="summary-number">8</div>
+			<div class="summary-label">Resources</div>
+		</div>
+		<div class="summary-item">
+			<div class="summary-number">2</div>
+			<div class="summary-label">Outputs</div>
+		</div>
+		<div class="summary-item">
+			<div class="summary-number">1.0</div>
+			<div class="summary-label">Format Version</div>
+		</div>
+		<div class="summary-item">
+			<div class="summary-number">1.13.3</div>
+			<div class="summary-label">Terraform Version</div>
+		</div>
+	</div><div style="margin-top: 20px;">
+			<h3>Resources by Type</h3>
+			<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">data.aws_caller_identity</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div>
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">data.aws_region</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div>
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">aws_iam_role</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div>
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">aws_s3_bucket</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div>
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">aws_s3_bucket_versioning</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div>
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">aws_s3_bucket_public_access_block</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div>
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">aws_dynamodb_table</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div>
+				<div style="padding: 10px; background-color: white; border-radius: 3px; text-align: center;">
+					<div style="font-weight: bold; color: #2c3e50;">aws_cloudwatch_log_group</div>
+					<div style="font-size: 18px; color: #3498db;">1</div>
+				</div></div></div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="collapsible" onclick="toggleCollapsible(this)">
+            <div class="section-header-row">
+                    <h2>Resources (8 total)</h2>
+                    <p class="section-description">All resources in your Terraform state</p>
+                </div>
+            </div>
+            <div class="collapsible-content">
+                <div>
+			<div class="resource-item managed">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Managed</div>
+					<div class="resource-address">aws_iam_role.main</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_iam_role</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">name:</span>
+					<span class="attribute-value">main-role</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">assume_role_policy:</span>
+					<span class="attribute-value">{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"...</span>
+				</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item managed">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Managed</div>
+					<div class="resource-address">aws_s3_bucket.main</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_s3_bucket</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">bucket:</span>
+					<span class="attribute-value">my-terraform-state-bucket-xyz123</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">tags:</span>
+					<span class="attribute-value">{3 fields}</span>
+				</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item managed">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Managed</div>
+					<div class="resource-address">aws_s3_bucket_versioning.main</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_s3_bucket_versioning</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">bucket:</span>
+					<span class="attribute-value">my-terraform-state-bucket-xyz123</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">versioning_configuration:</span>
+					<span class="attribute-value">[1 items]</span>
+				</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item managed">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Managed</div>
+					<div class="resource-address">aws_s3_bucket_public_access_block.main</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_s3_bucket_public_access_block</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">bucket:</span>
+					<span class="attribute-value">my-terraform-state-bucket-xyz123</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">block_public_acls:</span>
+					<span class="attribute-value">true</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">block_public_policy:</span>
+					<span class="attribute-value">true</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">ignore_public_acls:</span>
+					<span class="attribute-value">true</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">restrict_public_buckets:</span>
+					<span class="attribute-value">true</span>
+				</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item managed">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Managed</div>
+					<div class="resource-address">aws_dynamodb_table.terraform_locks</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_dynamodb_table</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">name:</span>
+					<span class="attribute-value">terraform-state-locks</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">billing_mode:</span>
+					<span class="attribute-value">PAY_PER_REQUEST</span>
+				</div>
+				<div class="attribute-item attribute-sensitive">
+					<span class="attribute-key">hash_key:</span>
+					<span class="attribute-value">***</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">attribute:</span>
+					<span class="attribute-value">[1 items]</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">tags:</span>
+					<span class="attribute-value">{2 fields}</span>
+				</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item managed">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Managed</div>
+					<div class="resource-address">aws_cloudwatch_log_group.main</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_cloudwatch_log_group</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">name:</span>
+					<span class="attribute-value">/aws/terraform/main</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">retention_in_days:</span>
+					<span class="attribute-value">30</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">tags:</span>
+					<span class="attribute-value">{2 fields}</span>
+				</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item data">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Data Source</div>
+					<div class="resource-address">data.aws_caller_identity.current</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_caller_identity</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">account_id:</span>
+					<span class="attribute-value">123456789012</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">arn:</span>
+					<span class="attribute-value">arn:aws:iam::123456789012:root</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">user_id:</span>
+					<span class="attribute-value">AIDACKCEVSQ6C2EXAMPLE</span>
+				</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item data">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Data Source</div>
+					<div class="resource-address">data.aws_region.current</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						
+		<div class="attribute-item">
+			<span class="attribute-key">Type:</span>
+			<span class="attribute-value">aws_region</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Provider:</span>
+			<span class="attribute-value">registry.terraform.io/hashicorp/aws</span>
+		</div>
+		<div class="attribute-item">
+			<span class="attribute-key">Schema Version:</span>
+			<span class="attribute-value">0</span>
+		</div><div class="attribute-item">
+			<span class="attribute-key">Configuration:</span>
+		</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">name:</span>
+					<span class="attribute-value">us-west-2</span>
+				</div>
+				<div class="attribute-item ">
+					<span class="attribute-key">description:</span>
+					<span class="attribute-value">US West (Oregon)</span>
+				</div>
+					</div>
+				</div>
+			</div></div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="collapsible" onclick="toggleCollapsible(this)">
+            <div class="section-header-row">
+                    <h2>Outputs (2 total)</h2>
+                    <p class="section-description">Output values from your Terraform state</p>
+                </div>
+            </div>
+            <div class="collapsible-content">
+                <div>
+			<div class="resource-item ">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Output</div>
+					<div class="resource-address">vpc_id</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						<div class="attribute-item">
+							<span class="attribute-key">Type:</span>
+							<span class="attribute-value">string</span>
+						</div>
+						<div class="attribute-item ">
+							<span class="attribute-key">Value:</span>
+							<span class="attribute-value">vpc-0123456789abcdef0</span>
+						</div>
+						<div class="attribute-item">
+							<span class="attribute-key">Sensitive:</span>
+							<span class="attribute-value">false</span>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="resource-item attribute-sensitive">
+				<div class="collapsible" onclick="toggleCollapsible(this)">
+					<div>Output</div>
+					<div class="resource-address">database_endpoint</div>
+				</div>
+				<div class="collapsible-content">
+					<div class="resource-attributes">
+						<div class="attribute-item">
+							<span class="attribute-key">Type:</span>
+							<span class="attribute-value">string</span>
+						</div>
+						<div class="attribute-item attribute-sensitive">
+							<span class="attribute-key">Value:</span>
+							<span class="attribute-value">prod....com</span>
+						</div>
+						<div class="attribute-item">
+							<span class="attribute-key">Sensitive:</span>
+							<span class="attribute-value">true</span>
+						</div>
+					</div>
+				</div>
+			</div></div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="collapsible collapsed" onclick="toggleCollapsible(this)">
+            <div class="section-header-row">
+                    <h2>Modules</h2>
+                    <p class="section-description">Module hierarchy and organization</p>
+                </div>
+            </div>
+            <div class="collapsible-content collapsed">
+                <div style="text-align: center; padding: 40px 20px; background-color: #f8f9fa; border-radius: 8px; margin: 20px 0;">
+                    <h3 style="color: #2c3e50; margin-bottom: 15px;">Module parsing not yet implemented</h3>
+                    <p style="color: #6c757d; margin-bottom: 20px; font-size: 16px;">
+                        Module hierarchy visualization will be available in a future version.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="promo-message">
+        Want to visualize your Terraform state changes over time, enriched with pricing API data and drift detection?<br>
+        <a href="https://cloudvic.com" class="promo-link">Try CloudVIC</a>
+    </div>
+</body>
+</html>
