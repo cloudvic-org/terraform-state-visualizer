@@ -1,4 +1,4 @@
-name: 'CloudVIC Terraform State Visualizer'
+name: 'Browse Terraform State Files as Interactive HTML'
 description: 'Generate interactive HTML visualizations from Terraform state JSON files'
 author: 'CloudVIC'
 homepage: 'https://cloudvic.com'
